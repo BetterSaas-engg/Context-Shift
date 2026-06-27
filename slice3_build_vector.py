@@ -77,13 +77,14 @@ def get_sentence_vector(sentence):
     # gpt2-medium has 24 transformer blocks; layer 18 is in the upper third.
     layer_6 = outputs.hidden_states[18]
 
-    # Mean-pool across the token dimension (dim=1).
-    # WHY: each sentence has a different number of tokens, so the
-    # hidden state tensors have different lengths. By averaging across
-    # all token positions we collapse each sentence down to one fixed
-    # 768-length vector, making sentences with different token counts
-    # directly comparable.
-    sentence_vector = layer_6.mean(dim=1).squeeze()  # shape: (768,)
+    # Take the last token's hidden state instead of mean-pooling.
+    # WHY: mean-pooling averages in topic-specific words from across
+    # the sentence, leaking content into the vector. The last-token
+    # state tends to summarize the sentence's overall style with less
+    # topic contamination, which should reduce content drift when
+    # steering. It also gives us a fixed 1024-length vector regardless
+    # of sentence length.
+    sentence_vector = layer_6[0, -1, :]  # shape: (1024,)
 
     return sentence_vector
 

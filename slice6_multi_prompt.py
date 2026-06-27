@@ -10,7 +10,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # ── Config ───────────────────────────────────────────────────────────
 MODEL_NAME = "gpt2-medium"
-COEFFICIENT = 0.2  # In the sweet spot found in slice 5.
+COEFFICIENTS = [0.2, 0.4]  # Test two levels to see where the lighter vector lands.
 
 # ── Load model & tokenizer ──────────────────────────────────────────
 print(f"Loading model: {MODEL_NAME} ...")
@@ -26,11 +26,14 @@ steering_vector = torch.load("formal_vector.pt", weights_only=True)
 steer_enabled = False
 
 
+current_coeff = [0.0]
+
+
 def steering_hook(module, input, output):
-    """Add COEFFICIENT * steering_vector to the hidden state in-place."""
+    """Add current coefficient * steering_vector to the hidden state in-place."""
     if not steer_enabled:
         return
-    output[0].add_(COEFFICIENT * steering_vector)
+    output[0].add_(current_coeff[0] * steering_vector)
 
 
 # Attach to transformer block 17 (its output = hidden_states[18]).
@@ -50,30 +53,33 @@ prompts = [
 ]
 
 # ── Generate and compare ────────────────────────────────────────────
-# For each prompt we generate twice (unsteered then steered) so we can
-# read the difference side by side. Both use greedy decoding so the
-# only variable is the steering vector.
+# For each coefficient, run all 8 prompts with unsteered vs steered
+# side by side. Greedy decoding so the only variable is the vector.
 
-print(f"Coefficient: {COEFFICIENT}")
-print("=" * 70)
+for coeff in COEFFICIENTS:
+    current_coeff[0] = coeff
+    print(f"Coefficient: {coeff}")
+    print("=" * 70)
 
-for prompt in prompts:
-    inputs = tokenizer(prompt, return_tensors="pt")
+    for prompt in prompts:
+        inputs = tokenizer(prompt, return_tensors="pt")
 
-    # Unsteered
-    steer_enabled = False
-    unsteered_ids = model.generate(**inputs, max_new_tokens=40, do_sample=False)
-    unsteered_text = tokenizer.decode(unsteered_ids[0], skip_special_tokens=True)
+        # Unsteered
+        steer_enabled = False
+        unsteered_ids = model.generate(**inputs, max_new_tokens=40, do_sample=False)
+        unsteered_text = tokenizer.decode(unsteered_ids[0], skip_special_tokens=True)
 
-    # Steered
-    steer_enabled = True
-    steered_ids = model.generate(**inputs, max_new_tokens=40, do_sample=False)
-    steered_text = tokenizer.decode(steered_ids[0], skip_special_tokens=True)
+        # Steered
+        steer_enabled = True
+        steered_ids = model.generate(**inputs, max_new_tokens=40, do_sample=False)
+        steered_text = tokenizer.decode(steered_ids[0], skip_special_tokens=True)
 
-    print(f"  PROMPT:     {prompt}")
-    print(f"  UNSTEERED:  {unsteered_text}")
-    print(f"  STEERED:    {steered_text}")
-    print("-" * 70)
+        print(f"  PROMPT:     {prompt}")
+        print(f"  UNSTEERED:  {unsteered_text}")
+        print(f"  STEERED:    {steered_text}")
+        print("-" * 70)
+
+    print()
 
 # ── Clean up ─────────────────────────────────────────────────────────
 hook_handle.remove()
