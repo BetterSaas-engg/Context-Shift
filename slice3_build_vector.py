@@ -18,35 +18,47 @@ model = AutoModelForCausalLM.from_pretrained(
 ).to("cpu")
 print("Model loaded.\n")
 
-# ── Define contrastive sentence lists ───────────────────────────────
-# The sentences cover varied topics so that topic-specific patterns
-# cancel out when we average. The ONLY consistent difference between
-# the two lists is formality — that's what survives the averaging.
+# ── Define matched contrast pairs ───────────────────────────────────
+# Each formal_sentences[i] and casual_sentences[i] express the SAME
+# meaning and differ ONLY in formality — same topic, same intent,
+# opposite register.
+#
+# WHY matched pairs sharpen the vector: when we average the formal
+# vectors and the casual vectors separately, any signal related to
+# topic, sentence length, or specific content appears in BOTH averages
+# equally (because each pair shares the same meaning). So when we
+# subtract casual_avg from formal_avg, those shared signals cancel out
+# perfectly — leaving a cleaner formality direction than loosely-matched
+# lists where topic/content differences would leak into the vector.
 
 formal_sentences = [
-    "I am writing to formally request your assistance with this matter.",
-    "Please find the enclosed report for your review and consideration.",
-    "We would like to schedule a meeting at your earliest convenience.",
-    "I respectfully submit the following proposal for your evaluation.",
-    "Kindly confirm receipt of the attached documentation at your leisure.",
-    "The committee has reviewed the application and reached a decision.",
-    "We appreciate your prompt attention to this important issue.",
-    "I would be grateful if you could provide clarification on this point.",
-    "It is my pleasure to inform you that your request has been approved.",
-    "We wish to express our sincere gratitude for your continued support.",
+    "I would be grateful if you could assist me with this matter.",
+    "Please find the requested report attached for your review.",
+    "I am writing to formally request a meeting at your earliest convenience.",
+    "Thank you for your prompt response to my inquiry.",
+    "I regret to inform you that we are unable to proceed.",
+    "Kindly confirm whether the proposed terms are acceptable.",
+    "It was a pleasure to make your acquaintance yesterday.",
+    "I would appreciate your feedback at your earliest convenience.",
+    "We apologize for any inconvenience this may have caused.",
+    "Please do not hesitate to contact me should you require assistance.",
+    "I look forward to our continued collaboration.",
+    "Could you please clarify the requirements for this task?",
 ]
 
 casual_sentences = [
-    "hey can you help me out with this thing?",
-    "yo check out this report lol",
-    "wanna grab a meeting sometime this week?",
-    "so i got this idea, tell me what you think",
-    "got the docs, thanks a bunch!",
-    "ok so they looked at the app and made a call",
-    "hey just wanted to flag this real quick",
-    "can you explain what you meant by that?",
-    "nice, looks like they said yes!",
-    "thanks so much dude, really appreciate it",
+    "can u help me out with this?",
+    "here's that report u wanted lol",
+    "wanna grab a meeting sometime soon?",
+    "thanks for getting back to me so fast!",
+    "yeah sorry we can't do it",
+    "lemme know if those terms work for u",
+    "was great meeting u yesterday!",
+    "hit me back with thoughts whenever",
+    "sorry for the hassle",
+    "just ping me if u need anything",
+    "excited to keep working together!",
+    "what exactly do u need for this?",
 ]
 
 # ── Helper: get a single vector for a sentence ─────────────────────
