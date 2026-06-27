@@ -1,113 +1,124 @@
 # ContextShift POC — Results
 
 **Date:** 2026-06-27
-**Model:** GPT-2 small (124M), CPU only
-**What this documents:** what the 5-slice tracer bullet actually proved, and —
-just as importantly — what it did NOT prove. Written to keep us honest before
-anyone builds anything else on top of it.
+**Model:** GPT-2 medium (355M), CPU only
+**Status:** POC landed — a single tunable dial produces a legible casual→formal
+shift while staying coherent.
+
+This file records what the POC actually proved, the working recipe, and the
+honest limits — so nobody (including us) overclaims later.
 
 ---
 
 ## TL;DR
 
-The activation-steering **mechanism works end to end** on a real model, on a
-laptop, with no GPU and no retraining. We can read a model's internal state,
-build a direction from contrasting examples, inject it during generation, and
-tune its strength with a dial — including watching the output break exactly when
-theory says it should.
+We can steer a real model's register with one dial, no retraining, on a laptop.
+The decisive factor turned out to be **which layer** we steer at: shallow/middle
+layers gave mushy results; the **upper-third layer (18 of 24)** gave a clean,
+readable formality shift with a wide, stable usable band.
 
-**We have NOT yet demonstrated clean "formality" control specifically.** On a
-model this small, the steering produced shorter/stiffer/more-repetitive text
-rather than text that clearly reads as *more formal*. That distinction matters
-and is the next thing to earn.
+The casual→formal change is visible to the naked eye at coefficient 0.1–0.3.
 
 ---
 
 ## What we built (5 slices, each runs and prints something real)
 
-| Slice | File | Proved |
+| Slice | File | Proves |
 |---|---|---|
-| 1 | `slice1_load.py` | A small open-weight model loads and generates text on CPU. |
-| 2 | `slice2_read_state.py` | We can reach into the model and read its internal hidden state. Shape `(1, 7, 768)` → 768 "features" (sliders) per token. |
-| 3 | `slice3_build_vector.py` | We can build a steering vector by averaging formal vs casual sentence states and subtracting. Saved to `formal_vector.pt`. |
-| 4 | `slice4_steer.py` | Injecting that vector during generation changes the output. Same prompt + same greedy decoding → different text, purely from steering. |
-| 5 | `slice5_dial.py` | The strength is a real, tunable dial. Swept coefficients and found both a usable band and the breakdown point. |
+| 1 | `slice1_load.py` | A small open-weight model loads and generates on CPU. |
+| 2 | `slice2_read_state.py` | We can read the model's internal hidden state. |
+| 3 | `slice3_build_vector.py` | We can build a steering vector from contrasting examples and save it. |
+| 4 | `slice4_steer.py` | Injecting the vector during generation changes the output (clean, deterministic). |
+| 5 | `slice5_dial.py` | Strength is a tunable dial with a findable sweet spot and a findable cliff. |
 
 ---
 
-## Key measured findings
+## The working recipe (what actually produces the formal shift)
 
-- **The direction is real and strong.** The steering vector's magnitude (L2
-  norm) came out at **~94.93**. A near-zero number would have meant formal and
-  casual text look the same inside the model. It doesn't — they sit in clearly
-  different places. (This proves a *difference exists*, not that the vector is
-  clean — see limitations.)
+- **Model:** `gpt2-medium` (355M), CPU.
+- **Layer:** build the vector from `hidden_states[18]`; inject at `model.transformer.h[17]`
+  (these are the same point — output of block 17 — and they MUST match).
+- **Contrast set:** 12 **matched pairs** — each formal sentence paired with a
+  casual sentence of the same meaning, differing only in register.
+- **Vector:** mean-pool each sentence's layer-18 state to one 1024-length vector,
+  average the formal set, average the casual set, subtract. Magnitude ≈ **208**.
+- **Coefficient sweet spot:** **0.1 – 0.3** (clean and readable). Stable up to ~0.6.
+- **Cliff:** begins around **0.8**, full collapse by 1.0+.
 
-- **Injection point matters and was matched exactly.** The vector was built from
-  `hidden_states[6]` (the output of transformer block index 5), and injected at
-  the same place via a forward hook on `model.transformer.h[5]`. Build-location
-  and inject-location must agree.
+### The headline example (greedy decoding, same prompt)
 
-- **The dial has a narrow usable band on this model:**
-  - **0** → baseline (normal GPT-2).
-  - **0.05** → no visible change yet.
-  - **0.1** → first visible nudge ("The new policy" → "The policy"), still coherent.
-  - **0.15–0.3** → text tightens and restructures, still grammatical.
-  - **0.5** → **cliff**: collapses into repetition ("policy to policy to the policy...").
-  - **1.0 and above** → fully broken ("in, in, in, in...").
+Prompt: *"My thoughts on the new policy are"*
 
-- **The cliff is real and showed up on cue.** This is the inverted-U from the
-  literature: quality rises to a sweet spot, then falls off sharply as strength
-  increases. Seeing it is a success — it confirms the dial genuinely controls
-  the model.
+- **Coefficient 0 (baseline):** "...mixed. I think it's a good idea, but I don't
+  think it's the right way to go about it." — casual, hedgy, blog-ish.
+- **Coefficient 0.1:** "...as follows: 1. The new policy is a good first step. It
+  is a step in the right direction, but it is not enough." — restructures into a
+  formal, numbered, memo-style register and stays coherent.
 
-- **Coefficient scale was the surprise.** Because the vector magnitude is ~95,
-  even a coefficient of 1.0 was already far past the cliff. The entire usable
-  range lives in fractions below 1.0. Finding the right scale was the real
-  fiddly work — and is exactly the part that makes this a product rather than a
-  one-liner.
+That "as follows: / numbered points" shift is a legible formality fingerprint.
+
+---
+
+## The path that got us here (what we ruled in/out, with evidence)
+
+This is the useful part — we found the working recipe by elimination, not luck.
+
+1. **GPT-2 small (124M), middle layer 6** -> mechanism worked, but effect was just
+   "shorter/stiffer," and the cliff came almost immediately (broke below
+   coefficient 1.0). Too small to steer gracefully.
+2. **GPT-2 medium, middle layer 12, loose contrast lists** -> stable across the
+   sweep (no early cliff), but effect read as "measured/analytical," not formal.
+3. **GPT-2 medium, middle layer 12, matched contrast pairs** -> vector got
+   stronger (130 -> 203), but pushing harder caused **topic drift** (wandered to
+   random news/political content), never formal register. So contrast quality and
+   raw strength were NOT the bottleneck.
+4. **GPT-2 medium, layer 18, matched pairs** -> clean, legible formality with a
+   wide sweet spot. **Layer depth was the deciding lever.**
+
+Conclusion: for register/style on this model, *where* you steer matters more than
+model size, contrast-set polish, or coefficient strength. Style lives in the
+upper layers.
 
 ---
 
 ## What this PROVES
 
-1. The core ContextShift mechanism is sound and reproducible on real hardware.
-2. It needs no retraining, no GPU, no weight changes — toggling the hook on/off
-   is the entire control surface.
-3. The dial behaves predictably, including a findable sweet spot and a findable
-   cliff.
+1. The ContextShift mechanism works end to end on a real model, no GPU, no
+   retraining, no weight changes — toggling the hook on/off is the whole control surface.
+2. With the right layer, the steered output shows a **legible** formality shift,
+   not just "different" output.
+3. The dial is predictable: findable sweet spot, findable cliff, wide stable band.
 
 ## What this does NOT prove (do not overclaim)
 
-1. **That we steered "formality."** The steered text got more clipped and
-   repetitive, not obviously more *formal* in register. On GPT-2 small the
-   vector likely captured "shorter/stiffer" more than true formality. The
-   machinery is proven; crisp *concept* control is not yet.
-2. **That the effect is clean or reliable.** One prompt, one concept, one tiny
-   model. No measurement of how often it works or how it generalizes.
-3. **Anything about bigger or better models.** Untested.
-4. **Anything about production reliability, composition of multiple concepts, or
-   auto-tuning.** All explicitly out of scope for this POC.
+1. **Reliability.** This is one prompt. We have not shown the same clean shift
+   across many varied prompts. "It can happen cleanly" != "it reliably happens."
+2. **Which formality.** The effect is "structured/officious" register (numbered,
+   memo-like), not the "polite-correspondence" flavor ("I would be grateful /
+   kindly") that our contrast pairs emphasized. It found *a* formal register, not
+   precisely the one in our examples.
+3. **Generalization to other models or concepts.** Untested here.
+4. **Production-grade anything** — no auto-tuning, no multi-concept composition,
+   no eval harness. All still out of scope.
 
 ---
 
 ## Honest headline
 
-> "The steering machinery works end to end. Demonstrating crisp, legible concept
-> control (e.g. formality you can actually read) is the next thing to earn."
-
-Not: "We built a formality dial." We built the dial; we haven't yet shown it
-turns *formality* cleanly.
+> "With the right layer, the steering produces a clean, readable casual->formal
+> shift on a real model on a laptop. Proving it does so *reliably across prompts*
+> is the next thing to earn."
 
 ---
 
-## Highest-value next step (parked, one decision)
+## Highest-value next steps (parked, in order)
 
-Swap `MODEL_NAME` to a slightly stronger small model and re-run the same five
-scripts unchanged. If the steered output reads as *crisply more formal* (not
-just shorter), that confirms the concept-cleanliness gap was a model-size limit,
-and gives a demo that actually reads as formal. One-line change; we designed for
-it (decision D4 in the spec).
+1. **Reliability test.** Run the layer-18 / coeff-0.2 recipe across 8–10 different
+   prompts. Does the formal shift hold every time? This is the single most
+   important next experiment — it's the line between "demo" and "works."
+2. **Auto-pick the coefficient.** Right now we eyeball the sweet spot. A product
+   needs to find it automatically per model/concept.
+3. **Second concept.** Try an easier axis (e.g. positive/negative sentiment) to
+   confirm the layer-depth lesson generalizes beyond formality.
 
-Everything else (auto-tuning the sweet spot, a second concept, an eval harness,
-any packaging) stays parked until that re-run produces legible formality.
+Everything else stays parked until step 1 (reliability) is answered.
