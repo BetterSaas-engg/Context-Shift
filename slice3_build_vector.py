@@ -8,7 +8,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # ── Config ───────────────────────────────────────────────────────────
-MODEL_NAME = "gpt2"
+MODEL_NAME = "gpt2-medium"
 
 # ── Load model & tokenizer ──────────────────────────────────────────
 print(f"Loading model: {MODEL_NAME} ...")
@@ -52,8 +52,8 @@ casual_sentences = [
 # ── Helper: get a single vector for a sentence ─────────────────────
 def get_sentence_vector(sentence):
     """
-    Run one sentence through the model and return a single 768-length
-    vector representing that sentence at layer 6.
+    Run one sentence through the model and return a single 1024-length
+    vector representing that sentence at layer 12.
     """
     input_ids = tokenizer.encode(sentence, return_tensors="pt")
 
@@ -61,8 +61,9 @@ def get_sentence_vector(sentence):
     with torch.no_grad():
         outputs = model(input_ids)
 
-    # Grab the layer-6 hidden state. Shape: [1, num_tokens, 768]
-    layer_6 = outputs.hidden_states[6]
+    # Grab the layer-12 hidden state. Shape: [1, num_tokens, 1024]
+    # gpt2-medium has 24 transformer blocks, so layer 12 is the middle.
+    layer_6 = outputs.hidden_states[12]
 
     # Mean-pool across the token dimension (dim=1).
     # WHY: each sentence has a different number of tokens, so the
