@@ -45,7 +45,7 @@ inputs = tokenizer(prompt, return_tensors="pt")
 # As the coefficient climbs we expect the tone to shift toward formal.
 # Past a certain point the signal overwhelms the model and output
 # quality collapses — that's the cliff.
-coefficients = [0, 1, 2, 3, 4, 6, 8]
+coefficients = [0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5]
 
 print(f"Prompt: \"{prompt}\"\n")
 print("=" * 64)
