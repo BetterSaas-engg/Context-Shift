@@ -73,9 +73,9 @@ def get_sentence_vector(sentence):
     with torch.no_grad():
         outputs = model(input_ids)
 
-    # Grab the layer-12 hidden state. Shape: [1, num_tokens, 1024]
-    # gpt2-medium has 24 transformer blocks, so layer 12 is the middle.
-    layer_6 = outputs.hidden_states[12]
+    # Grab the layer-18 hidden state. Shape: [1, num_tokens, 1024]
+    # gpt2-medium has 24 transformer blocks; layer 18 is in the upper third.
+    layer_6 = outputs.hidden_states[18]
 
     # Mean-pool across the token dimension (dim=1).
     # WHY: each sentence has a different number of tokens, so the

@@ -34,8 +34,8 @@ def steering_hook(module, input, output):
     output[0].add_(current_coeff[0] * steering_vector)
 
 
-# Attach to transformer block 11 (its output = hidden_states[12]).
-hook_handle = model.transformer.h[11].register_forward_hook(steering_hook)
+# Attach to transformer block 17 (its output = hidden_states[18]).
+hook_handle = model.transformer.h[17].register_forward_hook(steering_hook)
 
 # ── Prompt & coefficient ladder ─────────────────────────────────────
 prompt = "My thoughts on the new policy are"
@@ -45,7 +45,7 @@ inputs = tokenizer(prompt, return_tensors="pt")
 # As the coefficient climbs we expect the tone to shift toward formal.
 # Past a certain point the signal overwhelms the model and output
 # quality collapses — that's the cliff.
-coefficients = [0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.5, 2.0]
+coefficients = [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.6, 0.8]
 
 print(f"Prompt: \"{prompt}\"\n")
 print("=" * 64)
